@@ -1,4 +1,4 @@
-# playgo
+# play-go
 
 ```shell
 curl -X GET \

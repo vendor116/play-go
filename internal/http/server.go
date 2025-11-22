@@ -7,44 +7,59 @@ import (
 	"net"
 	"net/http"
 	"time"
+
+	"golang.org/x/sync/errgroup"
 )
 
 const (
-	readHeaderTimeout = 3 * time.Second
-	shutdownTimeout   = 5 * time.Second
+	readHeaderTimeout = 2 * time.Second
+	handleTimeout     = 2 * time.Second
+	shutdownTimeout   = 2 * time.Second
 )
 
-func RunServer(ctx context.Context, handler http.Handler, host, port string) {
+func RunAPIServer(ctx context.Context, handler http.Handler, host, port string) error {
 	server := &http.Server{
 		Addr:              net.JoinHostPort(host, port),
-		Handler:           handler,
+		Handler:           http.TimeoutHandler(handler, handleTimeout, http.ErrHandlerTimeout.Error()),
 		ReadHeaderTimeout: readHeaderTimeout,
 	}
 
-	httpCtx, stop := context.WithCancelCause(ctx)
+	logger := slog.Default().With("addr", server.Addr)
 
-	go func() {
-		slog.Default().Info("starting http server", "addr", server.Addr)
+	g, gCtx := errgroup.WithContext(context.Background())
+
+	g.Go(func() error {
+		logger.Info("starting API server")
 
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			stop(err)
+			return err
 		}
-	}()
 
-	<-httpCtx.Done()
+		logger.Info("API server shutdown gracefully")
+		return nil
+	})
 
-	if err := context.Cause(httpCtx); err != nil && !errors.Is(err, context.Canceled) {
-		slog.Default().ErrorContext(httpCtx, "failed to start http server", "error", err)
-		return
+	g.Go(func() error {
+		select {
+		case <-gCtx.Done():
+			return gCtx.Err()
+		case <-ctx.Done():
+			logger.Info("shutting down API server", "error", ctx.Err())
+
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+			defer cancel()
+
+			if err := server.Shutdown(shutdownCtx); err != nil {
+				logger.ErrorContext(shutdownCtx, "failed to shutdown API server", "error", err)
+			}
+
+			return nil
+		}
+	})
+
+	if err := g.Wait(); err != nil && !errors.Is(err, context.Canceled) {
+		return err
 	}
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
-	defer cancel()
-
-	if err := server.Shutdown(shutdownCtx); err != nil {
-		slog.Default().ErrorContext(shutdownCtx, "failed to shutdown http server", "error", err)
-		return
-	}
-
-	slog.Default().InfoContext(httpCtx, "http server shutdown gracefully")
+	return nil
 }

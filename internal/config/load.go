@@ -8,22 +8,14 @@ import (
 	"github.com/spf13/viper"
 )
 
-const (
-	defaultEnvPrefix  = "APP"
-	defaultConfigPath = "./config.yaml"
-)
+const envPrefix = "V116"
 
-func Load(path string, options ...func() error) (*App, error) {
+func Load[T any](path string) (*T, error) {
+	viper.AutomaticEnv()
+	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	viper.SetEnvPrefix(envPrefix)
+
 	viper.SetConfigFile(path)
-	if path == "" {
-		viper.SetConfigFile(defaultConfigPath)
-	}
-
-	for _, option := range options {
-		if err := option(); err != nil {
-			return nil, err
-		}
-	}
 
 	if err := viper.ReadInConfig(); err != nil {
 		if errors.As(err, &viper.ConfigFileNotFoundError{}) {
@@ -33,24 +25,10 @@ func Load(path string, options ...func() error) (*App, error) {
 		return nil, fmt.Errorf("error reading config file: %w", err)
 	}
 
-	var cfg App
+	var cfg T
 	if err := viper.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("unable to decode into struct: %w", err)
 	}
 
 	return &cfg, nil
-}
-
-func WithEnvs(prefix string) func() error {
-	return func() error {
-		viper.AutomaticEnv()
-		viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
-
-		viper.SetEnvPrefix(defaultEnvPrefix)
-		if prefix != "" {
-			viper.SetEnvPrefix(prefix)
-		}
-
-		return nil
-	}
 }

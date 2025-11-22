@@ -3,7 +3,8 @@ package main
 import (
 	"context"
 	"flag"
-	"log"
+	"log/slog"
+	"os"
 	"os/signal"
 	"syscall"
 
@@ -20,30 +21,34 @@ var (
 )
 
 func main() {
-	var cfgPath, envPrefix string
-	flag.StringVar(&cfgPath, "config", "config.yaml", "path to config file")
-	flag.StringVar(&envPrefix, "env-prefix", "APP", "environment prefix")
+	var cfgPath string
+	flag.StringVar(&cfgPath, "config", "", "path to config file")
 	flag.Parse()
 
-	cfg, err := config.Load(cfgPath, config.WithEnvs(envPrefix))
+	internal.DefaultJSONLogger(name, version)
+
+	cfg, err := config.Load[config.App](cfgPath)
 	if err != nil {
-		log.Fatalf("failed to load config: %v", err)
+		slog.Default().Error("failed to load config", "error", err)
+		os.Exit(1)
 	}
 
-	err = internal.SetupLogger(name, version, cfg.LogLevel)
-	if err != nil {
-		log.Fatalf("failed to setup logger: %v", err)
+	if err = internal.SetLogLevel(cfg.LogLevel); err != nil {
+		slog.Default().Warn("failed to set log level", "error", err)
 	}
+
+	apiServer := api.NewServer()
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	server := api.NewServer()
-
-	http.RunServer(
+	err = http.RunAPIServer(
 		ctx,
-		generated.HandlerFromMux(server, api.GetChiRouter(server)),
-		cfg.HTTPServer.Host,
-		cfg.HTTPServer.Port,
+		generated.HandlerFromMux(apiServer, api.GetRouter(apiServer)),
+		cfg.APIPServer.Host,
+		cfg.APIPServer.Port,
 	)
+	if err != nil {
+		slog.Default().Error("failed to start API server", "error", err)
+	}
 }

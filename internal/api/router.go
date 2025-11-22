@@ -5,9 +5,9 @@ import (
 	"github.com/vendor116/playgo/internal/generated"
 )
 
-func GetChiRouter(server generated.ServerInterface) *chi.Mux {
-	router := chi.NewRouter()
-	router.Get("/v1/info", server.GetInfo)
-
-	return router
+func GetRouter(server generated.ServerInterface) chi.Router {
+	return chi.NewRouter().
+		Route("/v1", func(r chi.Router) {
+			r.Get("/info", server.GetInfo)
+		})
 }

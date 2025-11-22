@@ -1,5 +1,5 @@
 log_level: info
 
-http_server:
+api_server:
   host: localhost
   port: 8080
