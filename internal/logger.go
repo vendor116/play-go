@@ -5,15 +5,15 @@ import (
 	"os"
 )
 
-var logLevel = &slog.LevelVar{}
+var logLevel slog.LevelVar
 
-func DefaultJSONLogger(name, version string) {
+func DefaultJSONLogger(app, version string) {
 	h := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: logLevel,
+		Level: &logLevel,
 	})
 
 	slog.SetDefault(slog.New(h).With(
-		slog.String("name", name),
+		slog.String("app", app),
 		slog.String("version", version),
 	))
 }

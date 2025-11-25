@@ -17,7 +17,7 @@ const (
 	shutdownTimeout   = 2 * time.Second
 )
 
-func RunAPIServer(ctx context.Context, handler http.Handler, host, port string) error {
+func StartAPIServer(ctx context.Context, handler http.Handler, host, port string) error {
 	server := &http.Server{
 		Addr:              net.JoinHostPort(host, port),
 		Handler:           http.TimeoutHandler(handler, handleTimeout, http.ErrHandlerTimeout.Error()),
@@ -31,7 +31,7 @@ func RunAPIServer(ctx context.Context, handler http.Handler, host, port string) 
 	g.Go(func() error {
 		logger.Info("starting API server")
 
-		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := server.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 			return err
 		}
 
@@ -44,7 +44,7 @@ func RunAPIServer(ctx context.Context, handler http.Handler, host, port string) 
 		case <-gCtx.Done():
 			return gCtx.Err()
 		case <-ctx.Done():
-			logger.Info("shutting down API server", "error", ctx.Err())
+			logger.Warn("shutting down API server")
 
 			shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 			defer cancel()
